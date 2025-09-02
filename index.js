@@ -1,4 +1,4 @@
-const { makeWASocket, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys')
+const { makeWASocket, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion, jidDecode } = require('@whiskeysockets/baileys')
 const readline = require("readline")
 const qrcode = require("qrcode-terminal")
 
@@ -104,11 +104,24 @@ function manualChat(sock) {
     })
 
     const ask = () => {
-        rl.question("📱 JID (ej: 595XXXXXXXX@s.whatsapp.net o grupo@g.us): ", async (jid) => {
+        rl.question("📱 JID (ej: 595XXXXXXXX o grupo@g.us): ", async (jid) => {
             rl.question("💬 Mensaje: ", async (msg) => {
+                let formattedJid = jid
+                if (!jid.includes('@') && !jid.includes('-')) {
+                    formattedJid = `${jid}@s.whatsapp.net`
+                    console.log(`> Consola: JID autocompletado a: ${formattedJid}`)
+                }
+
+                const decodedJid = jidDecode(formattedJid)
+                if (!decodedJid || !decodedJid.user) {
+                    console.log("❌ Error: El JID ingresado no es válido. Verifica el número o ID de grupo.")
+                    ask()
+                    return
+                }
+
                 try {
-                    await sock.sendMessage(jid, { text: msg })
-                    console.log(`> Consola: Mensaje enviado a [${jid}]\n`)
+                    await sock.sendMessage(formattedJid, { text: msg })
+                    console.log(`> Consola: Mensaje enviado a [${formattedJid}]\n`)
                 } catch (e) {
                     console.log("❌ Error al enviar mensaje:", e.message)
                 }
@@ -120,4 +133,3 @@ function manualChat(sock) {
 }
 
 startBot()
-  
