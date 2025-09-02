@@ -112,68 +112,30 @@ async function startBot() {
         }
     })
 
-    // Función para mostrar el menú de comandos
+    // Función para mostrar el menú de comandos en el chat
     const sendMenu = async (jid) => {
         const menuMessage = `
+╔════════════════════╗
 🌟 ⚙️ MENÚ DE COMANDOS 🌟
 Creado por NoaDevStudio
+╚════════════════════╝
+
+✨ Opciones Principales:
+1️⃣ PRIVADO — ✉️ Enviar mensaje a un contacto
+2️⃣ TICKETS — 🎫 Gestionar tickets abiertos
+3️⃣ GRUPO — 👥 Ver tus grupos
+4️⃣ ABRIR TICKET — 🆕 Abrir un ticket a un contacto
 
 
 ---
 
-🔧 Comandos del Creador
+ℹ️ Indicaciones:
 
-(Solo tú puedes usarlos)
+📝 Usa ~menu para ver todos los comandos
 
-🟢 .on — Activa los comandos de grupo.
+🔙 Usa .1 para salir de un modo
 
-🔴 .off — Desactiva los comandos de grupo.
-
-✉️ .e [número] [mensaje] — Envía un mensaje a un contacto.
-
-📋 !info — Muestra los tickets de soporte abiertos.
-
-📜 !enviarlog [id] — Envía el registro de un ticket específico.
-
-
-
----
-
-👥 Comandos de Grupo
-
-(Usables solo en grupos)
-
-📋 !lista — Muestra la lista de miembros.
-
-❌ !kick @mención — Expulsa a un miembro.
-
-⭐ !promover @mención — Promueve a un miembro a admin.
-
-
-
----
-
-💬 Comandos de Chat para Todos
-
-(Usables en chats privados)
-
-📖 ~menu — Muestra este menú de comandos.
-
-🆕 !abrir — Abre un nuevo ticket de soporte.
-
-🔒 !cerrar — Cierra tu ticket actual.
-
-📱 !p — Vincula un nuevo dispositivo.
-
-📊 !estado — Muestra el estado del bot.
-
-🎲 !dado — Lanza un dado.
-
-🔮 !8ball [pregunta] — Te da una respuesta aleatoria.
-
-❓ !adivina — Te hace una adivinanza.
-
-🎵 ~play — Envía el audio de música.
+❌ Usa .2 para cerrar un ticket
 `
         await sock.sendMessage(jid, { text: menuMessage });
     }
@@ -264,7 +226,7 @@ Creado por NoaDevStudio
                         return
                     }
                     
-                    // 🆕 NUEVO COMANDO PARA MOSTRAR TICKETS ABIERTOS
+                    // NUEVO COMANDO PARA MOSTRAR TICKETS ABIERTOS
                     if (command === '!info') {
                         const openTickets = Object.values(tickets).filter(t => t.status === 'open')
                         let infoMessage = '📋 *Tickets Abiertos:*\n\n'
@@ -280,7 +242,7 @@ Creado por NoaDevStudio
                         return
                     }
 
-                    // 🆕 NUEVO COMANDO PARA ENVIAR LOGS
+                    // NUEVO COMANDO PARA ENVIAR LOGS
                     if (messageText.toLowerCase().startsWith('!enviarlog ')) {
                         const parts = messageText.split(' ')
                         const ticketId = parts[1]
@@ -602,19 +564,31 @@ Creado por NoaDevStudio
     })
 }
 
+// Función para mostrar el menú de comandos en la consola
 function showMenu() {
-    console.log(`\n--- ⚙️ MENÚ DE COMANDOS ---`)
-    console.log(`Crea un nuevo proyecto con Baileys.`)
-    console.log(`------------------------`)
-    console.log(`1️⃣ PRIVADO: Enviar mensaje a un contacto.`)
-    console.log(`2️⃣ TICKETS: Gestionar tickets abiertos.`)
-    console.log(`3️⃣ GRUPO: Ver tus grupos.`)
-    console.log(`4️⃣ ABRIR TICKET: Abrir un ticket a un contacto.`)
-    console.log(`------------------------`)
-    console.log(`- Usa ~menu para ver todos los comandos.`)
-    console.log(`- Usa .1 para salir de un modo.`)
-    console.log(`- Usa .2 para cerrar un ticket.`)
-    console.log(`------------------------`)
+    console.log(`
+╔════════════════════╗
+🌟 ⚙️ MENÚ DE COMANDOS 🌟
+Creado por NoaDevStudio
+╚════════════════════╝
+
+✨ Opciones Principales:
+1️⃣ PRIVADO — ✉️ Enviar mensaje a un contacto
+2️⃣ TICKETS — 🎫 Gestionar tickets abiertos
+3️⃣ GRUPO — 👥 Ver tus grupos
+4️⃣ ABRIR TICKET — 🆕 Abrir un ticket a un contacto
+
+
+---
+
+ℹ️ Indicaciones:
+
+📝 Usa ~menu para ver todos los comandos
+
+🔙 Usa .1 para salir de un modo
+
+❌ Usa .2 para cerrar un ticket
+`)
 }
 
 startBot()
