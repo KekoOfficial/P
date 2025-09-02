@@ -10,6 +10,10 @@ let ticketCounter = 0
 let currentMode = 'menu'
 let activeJid = null
 let groupCommandsEnabled = true
+let isAntiLinkEnabled = true
+let isWordFilterEnabled = true
+const botVersion = '1.2.0'
+let botMode = 'activo'
 const startTime = new Date()
 
 // ❗ DEBES REEMPLAZAR ESTE JID CON EL NÚMERO DEL CREADOR (con @s.whatsapp.net)
@@ -112,7 +116,7 @@ async function startBot() {
         }
     })
 
-    // Función para mostrar el menú de comandos en el chat
+    // Función para mostrar el menú de comandos
     const sendMenu = async (jid) => {
         const menuMessage = `
 ╔════════════════════╗
@@ -162,17 +166,19 @@ Creado por NoaDevStudio
                 const senderParticipant = m.key.participant || m.key.remoteJid
                 const senderName = m.pushName || senderParticipant.split('@')[0]
 
-                // 🔴 Sistema de Alerta de Palabras Ofensivas
-                for (const word of OFFENSIVE_WORDS) {
-                    if (messageText.toLowerCase().includes(word.toLowerCase())) {
-                        await sock.sendMessage(senderJid, { text: `⚠️ Por favor, mantén un lenguaje respetuoso. El uso de palabras ofensivas no está permitido.` })
-                        console.log(`> 😠 Alerta: Palabra ofensiva detectada de ${senderName} en [${senderJid}]`)
-                        return
+                // 🔴 Sistema de Alerta de Palabras Ofensivas (solo si está activado)
+                if (isWordFilterEnabled) {
+                    for (const word of OFFENSIVE_WORDS) {
+                        if (messageText.toLowerCase().includes(word.toLowerCase())) {
+                            await sock.sendMessage(senderJid, { text: `⚠️ Por favor, mantén un lenguaje respetuoso. El uso de palabras ofensivas no está permitido.` })
+                            console.log(`> 😠 Alerta: Palabra ofensiva detectada de ${senderName} en [${senderJid}]`)
+                            return
+                        }
                     }
                 }
 
-                // 🔴 Sistema Anti-Link
-                if (isGroup && messageText.match(/(https?:\/\/[^\s]+)/gi)) {
+                // 🔴 Sistema Anti-Link (solo si está activado)
+                if (isAntiLinkEnabled && isGroup && messageText.match(/(https?:\/\/[^\s]+)/gi)) {
                     try {
                         const groupMetadata = await sock.groupMetadata(senderJid)
                         const senderIsAdmin = groupMetadata.participants.find(p => p.id === senderParticipant)?.admin !== null
@@ -261,6 +267,75 @@ Creado por NoaDevStudio
                         }
                         return
                     }
+
+                    // 🆕 NUEVOS COMANDOS DE GESTIÓN AVANZADA
+                    if (isGroup) {
+                        const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+                        
+                        if (messageText.toLowerCase().startsWith('.kick') && mentionedJid) {
+                            await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'remove')
+                            console.log(`> 👥 Comando: Miembro ${mentionedJid} expulsado por el creador.`)
+                        } else if (messageText.toLowerCase().startsWith('.promover') && mentionedJid) {
+                            await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'promote')
+                            console.log(`> 👥 Comando: Miembro ${mentionedJid} promovido a admin por el creador.`)
+                        } else if (messageText.toLowerCase().startsWith('.limpiar ')) {
+                            const numMessages = parseInt(messageText.split(' ')[1], 10)
+                            if (isNaN(numMessages) || numMessages <= 0) {
+                                await sock.sendMessage(senderJid, { text: "Uso incorrecto. Formato: .limpiar [número de mensajes]" })
+                                return
+                            }
+                            const messages = await sock.fetchMessages(senderJid, { count: numMessages })
+                            const messageKeys = messages.map(msg => msg.key)
+                            await sock.deleteMessages(senderJid, messageKeys)
+                            await sock.sendMessage(senderJid, { text: `✅ Se eliminaron los últimos ${numMessages} mensajes.` })
+                        } else if (messageText.toLowerCase().startsWith('.anuncio ')) {
+                            const announcement = messageText.split(' ').slice(1).join(' ')
+                            const groups = await sock.groupFetchAllParticipating()
+                            for (const group of Object.values(groups)) {
+                                await sock.sendMessage(group.id, { text: `📢 *ANUNCIO DEL CREADOR:*\n\n${announcement}` })
+                            }
+                            await sock.sendMessage(senderJid, { text: `✅ Anuncio enviado a ${Object.keys(groups).length} grupos.` })
+                        }
+                    }
+
+                    if (messageText.toLowerCase().startsWith('.modo ')) {
+                        const mode = messageText.toLowerCase().split(' ')[1]
+                        if (['activo', 'silencioso', 'fiesta'].includes(mode)) {
+                            botMode = mode
+                            await sock.sendMessage(senderJid, { text: `✅ Modo del bot cambiado a: *${botMode.charAt(0).toUpperCase() + botMode.slice(1)}*.` })
+                        } else {
+                            await sock.sendMessage(senderJid, { text: 'Uso incorrecto. Modos disponibles: `activo`, `silencioso`, `fiesta`.' })
+                        }
+                        return
+                    }
+
+                    if (messageText.toLowerCase().startsWith('.filtro-palabras ')) {
+                        const status = messageText.toLowerCase().split(' ')[1]
+                        if (status === 'on') {
+                            isWordFilterEnabled = true
+                            await sock.sendMessage(senderJid, { text: '✅ Filtro de palabras activado.' })
+                        } else if (status === 'off') {
+                            isWordFilterEnabled = false
+                            await sock.sendMessage(senderJid, { text: '❌ Filtro de palabras desactivado.' })
+                        } else {
+                            await sock.sendMessage(senderJid, { text: 'Uso incorrecto. Formato: `.filtro-palabras [on/off]`' })
+                        }
+                        return
+                    }
+
+                    if (messageText.toLowerCase().startsWith('.bloquear-links ')) {
+                        const status = messageText.toLowerCase().split(' ')[1]
+                        if (status === 'on') {
+                            isAntiLinkEnabled = true
+                            await sock.sendMessage(senderJid, { text: '✅ Bloqueo de enlaces activado.' })
+                        } else if (status === 'off') {
+                            isAntiLinkEnabled = false
+                            await sock.sendMessage(senderJid, { text: '❌ Bloqueo de enlaces desactivado.' })
+                        } else {
+                            await sock.sendMessage(senderJid, { text: 'Uso incorrecto. Formato: `.bloquear-links [on/off]`' })
+                        }
+                        return
+                    }
                 }
 
                 // Manejo de comandos de grupo para el creador (solo si están activados)
@@ -290,7 +365,7 @@ Creado por NoaDevStudio
                 }
 
                 // Manejo de comandos generales (sin importar si es grupo o privado)
-                if (messageText.toLowerCase().startsWith('!') || messageText.toLowerCase().startsWith('~')) {
+                if (messageText.toLowerCase().startsWith('!') || messageText.toLowerCase().startsWith('~') || messageText.toLowerCase().startsWith('.')) {
                     const command = messageText.toLowerCase().trim()
                     
                     switch (true) {
@@ -321,7 +396,21 @@ Creado por NoaDevStudio
                                 await sock.sendMessage(senderJid, { text: "No hay un ticket abierto para cerrar." })
                             }
                             break
-                        case command === '!estado':
+                        // 🆕 NUEVO COMANDO PARA EL USUARIO
+                        case command === '!tickets':
+                            const userOpenTickets = Object.values(tickets).filter(t => t.status === 'open')
+                            let userTicketMessage = '📋 *Mis tickets abiertos:*\n\n'
+                            if (userOpenTickets.length > 0) {
+                                userOpenTickets.forEach(t => {
+                                    userTicketMessage += `ID: ${t.id} - Contacto: ${t.name || 'Desconocido'}\n`
+                                })
+                                userTicketMessage += '\nPara contactar un ticket, envía el ID con un guion bajo (ej: _123).'
+                            } else {
+                                userTicketMessage += 'No tienes tickets abiertos actualmente.'
+                            }
+                            await sock.sendMessage(senderJid, { text: userTicketMessage })
+                            break
+                        case command === '!estado' || command === '.estado':
                             const uptime = process.uptime()
                             const uptimeDays = Math.floor(uptime / (3600 * 24))
                             const uptimeHours = Math.floor((uptime % (3600 * 24)) / 3600)
@@ -329,7 +418,7 @@ Creado por NoaDevStudio
                             const uptimeSeconds = Math.floor(uptime % 60)
                             const freeMem = (os.freemem() / 1024 / 1024).toFixed(2)
                             const totalMem = (os.totalmem() / 1024 / 1024).toFixed(2)
-                            const statusMessage = `*🤖 Estado del Bot:*\n\n✅ En línea\n⏰ Tiempo en línea: ${uptimeDays}d, ${uptimeHours}h, ${uptimeMinutes}m, ${uptimeSeconds}s\n🧠 Memoria Libre: ${freeMem} MB / ${totalMem} MB`
+                            const statusMessage = `*🤖 Estado del Bot:*\n\n✅ En línea\n⏰ Tiempo en línea: ${uptimeDays}d, ${uptimeHours}h, ${uptimeMinutes}m, ${uptimeSeconds}s\n🧠 Memoria Libre: ${freeMem} MB / ${totalMem} MB\n\nVersión: ${botVersion}\nModo actual: ${botMode.charAt(0).toUpperCase() + botMode.slice(1)}`
                             await sock.sendMessage(senderJid, { text: statusMessage })
                             break
                         case command === '!dado':
@@ -365,6 +454,26 @@ Creado por NoaDevStudio
                             }
                             break;
                     }
+                }
+
+                // 🆕 SELECCIÓN DE TICKET POR ID PARA EL USUARIO
+                if (messageText.startsWith('_') && !isGroup) {
+                    const ticketId = parseInt(messageText.substring(1).trim(), 10)
+                    const ticketEntry = Object.entries(tickets).find(([jid, ticket]) => ticket.id === ticketId && ticket.status === 'open')
+                    
+                    if (ticketEntry) {
+                        const [ticketJid, ticketData] = ticketEntry
+                        const isTicketForThisUser = ticketJid === senderJid
+                        
+                        if (isTicketForThisUser) {
+                             await sock.sendMessage(senderJid, { text: `Has seleccionado el ticket ID ${ticketId}. Ya puedes enviar tus mensajes.` })
+                        } else {
+                            await sock.sendMessage(senderJid, { text: "No puedes gestionar un ticket que no te pertenece." })
+                        }
+                    } else {
+                        await sock.sendMessage(senderJid, { text: `No se encontró un ticket abierto con el ID ${ticketId}.` })
+                    }
+                    return
                 }
 
                 // Creación y manejo de tickets
