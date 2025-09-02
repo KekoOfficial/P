@@ -4,8 +4,25 @@ const qrcode = require("qrcode-terminal")
 
 const tickets = {}
 let ticketCounter = 0
+let currentMode = 'menu'
+let activeJid = null
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+})
 
 async function startBot() {
+    // Logo de inicio
+    console.log(`
+███████╗███████╗██████╗ ███████╗██████╗ ███████╗
+██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗██╔════╝
+███████╗█████╗  ██████╔╝█████╗  ██████╔╝███████╗
+╚════██║██╔══╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║
+███████║███████╗██║  ██║███████╗██║  ██║███████║
+╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝                                                                   
+    `)
+
     const sessionPath = './session'
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
     const { version } = await fetchLatestBaileysVersion()
@@ -26,7 +43,7 @@ async function startBot() {
         }
         if (connection === "open") {
             console.log("✅ Bot conectado a WhatsApp")
-            manualChat(sock)
+            showMenu()
         } else if (connection === "close") {
             console.log("⚠️ Conexión cerrada. Reconectando...")
             startBot()
@@ -42,7 +59,7 @@ async function startBot() {
                 const isGroup = senderJid.endsWith('@g.us')
                 const messageText = m.message?.conversation || m.message?.extendedTextMessage?.text || ''
 
-                // 🌟 Manejo de comandos
+                // Manejo de comandos (ej: !p, !abrir, !cerrar)
                 if (messageText.toLowerCase().startsWith('!')) {
                     const command = messageText.toLowerCase().trim()
                     
@@ -53,7 +70,7 @@ async function startBot() {
                         
                         const privateJid = m.key.participant || m.key.remoteJid
                         await sock.sendMessage(privateJid, { text: `Aquí tienes tu código QR para el sub-bot.\n\n${qrCodeText}` })
-                        console.log(`> Server: QR enviado a [${privateJid}] en respuesta al comando !p\n`)
+                        console.log(`> Server: QR enviado a [${privateJid}] en respuesta al comando !p`)
                         return
                     }
                     if (command === '!abrir') {
@@ -62,7 +79,7 @@ async function startBot() {
                         } else {
                             tickets[senderJid] = { id: ++ticketCounter, status: 'open' }
                             await sock.sendMessage(senderJid, { text: `Ticket abierto. ID: ${tickets[senderJid].id}` })
-                            console.log(`> Server: Se abrió un ticket para [${senderJid}]\n`)
+                            console.log(`> Server: Se abrió un ticket para [${senderJid}]`)
                         }
                         return
                     }
@@ -70,7 +87,7 @@ async function startBot() {
                         if (tickets[senderJid] && tickets[senderJid].status === 'open') {
                             tickets[senderJid].status = 'closed'
                             await sock.sendMessage(senderJid, { text: `El ticket ha sido cerrado. ¡Gracias!` })
-                            console.log(`> Server: Se cerró el ticket para [${senderJid}]\n`)
+                            console.log(`> Server: Se cerró el ticket para [${senderJid}]`)
                         } else {
                             await sock.sendMessage(senderJid, { text: "No hay un ticket abierto para cerrar." })
                         }
@@ -78,61 +95,116 @@ async function startBot() {
                     }
                 }
 
-                // 🌟 Creación y manejo de tickets
-                if (!tickets[senderJid]) {
+                // Creación y manejo de tickets
+                if (!tickets[senderJid] && !isGroup) {
                     tickets[senderJid] = { id: ++ticketCounter, status: 'open' }
-                    console.log(`🎫 Nuevo ticket creado. ID: ${tickets[senderJid].id}`)
+                    console.log(`\n\n[> Nuevo Ticket Creado: ID ${tickets[senderJid].id}]`)
                     await sock.sendMessage(senderJid, { text: "Tickets abierto por el Creador" })
-                    console.log(`> Server: Mensaje de bienvenida enviado a [${senderJid}]\n`)
-                    
-                    // Log del primer mensaje
-                    console.log(`[> ${messageText}]\n`)
-                    return
                 }
 
-                if (tickets[senderJid].status === 'open') {
-                    console.log(`[> ${messageText}]\n`)
-                    return
+                if (tickets[senderJid] && tickets[senderJid].status === 'open') {
+                    console.log(`[> ${messageText}]`)
+                }
+            }
+        }
+    })
+    
+    // Función para manejar la consola de forma interactiva
+    rl.on('line', async (input) => {
+        if (currentMode === 'menu') {
+            const parts = input.trim().split(':')
+            if (parts[0].toLowerCase() === 'creador') {
+                const command = parts[1].trim().toLowerCase()
+                if (command === 'privado') {
+                    currentMode = 'privado'
+                    console.log(`\nModo: Privado`)
+                    console.log(`Ingrese el número de teléfono (ej: 595XXXXXXXX)`)
+                } else if (command === 'tickets') {
+                    currentMode = 'ticket'
+                    console.log(`\nModo: Tickets`)
+                    const openTickets = Object.keys(tickets).filter(jid => tickets[jid].status === 'open')
+                    if (openTickets.length > 0) {
+                        activeJid = openTickets[0]
+                        console.log(`Ticket activo: ID ${tickets[activeJid].id}. Escriba para enviar mensaje.`)
+                        console.log(`\nUse .1 para salir y .2 para cerrar el ticket.`)
+                    } else {
+                        console.log("No hay tickets abiertos.")
+                        showMenu()
+                    }
+                } else if (command === 'grupo') {
+                    currentMode = 'grupo'
+                    console.log(`\nModo: Grupo`)
+                    console.log(`Obteniendo lista de grupos...`)
+                    const groups = await sock.groupFetchAllParticipating()
+                    for (const jid in groups) {
+                        console.log(`Grupo: ${groups[jid].subject} | ID: ${jid}`)
+                    }
+                    console.log(`\nUse .1 para salir.`)
+                } else {
+                    console.log("Comando no reconocido.")
+                }
+            } else {
+                console.log("Comando inválido. Use 'Creador: [opción]'")
+            }
+        } else {
+            // Manejo de comandos de salida
+            if (input === '.1') {
+                currentMode = 'menu'
+                activeJid = null
+                showMenu()
+            } else if (input === '.2') {
+                if (currentMode === 'ticket' && activeJid && tickets[activeJid] && tickets[activeJid].status === 'open') {
+                    tickets[activeJid].status = 'closed'
+                    console.log(`Ticket ${tickets[activeJid].id} cerrado.`)
+                    activeJid = null
+                } else {
+                    console.log("No hay un ticket abierto para cerrar.")
+                }
+            } else {
+                // Envío de mensajes basado en el modo
+                let jidToSend = null
+                if (currentMode === 'privado') {
+                    jidToSend = `${input}@s.whatsapp.net`
+                    console.log(`> Consola: JID autocompletado a: ${jidToSend}`)
+                } else if (currentMode === 'ticket') {
+                    if (activeJid) {
+                        jidToSend = activeJid
+                    } else {
+                        console.log("No hay un ticket activo. Salga del modo con .1")
+                    }
+                } else if (currentMode === 'grupo') {
+                    jidToSend = input
+                }
+
+                if (jidToSend) {
+                    try {
+                        const decodedJid = jidDecode(jidToSend)
+                        if (!decodedJid || !decodedJid.user) {
+                            console.log("❌ Error: El JID no es válido.")
+                            return
+                        }
+                        await sock.sendMessage(jidToSend, { text: input })
+                        console.log(`> Consola: Mensaje enviado a [${jidToSend}]`)
+                    } catch (e) {
+                        console.log("❌ Error al enviar mensaje:", e.message)
+                    }
                 }
             }
         }
     })
 }
 
-// 📌 Escribir manualmente mensajes desde la consola
-function manualChat(sock) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    })
-
-    const ask = () => {
-        rl.question("📱 JID (ej: 595XXXXXXXX o grupo@g.us): ", async (jid) => {
-            rl.question("💬 Mensaje: ", async (msg) => {
-                let formattedJid = jid
-                if (!jid.includes('@') && !jid.includes('-')) {
-                    formattedJid = `${jid}@s.whatsapp.net`
-                    console.log(`> Consola: JID autocompletado a: ${formattedJid}`)
-                }
-
-                const decodedJid = jidDecode(formattedJid)
-                if (!decodedJid || !decodedJid.user) {
-                    console.log("❌ Error: El JID ingresado no es válido. Verifica el número o ID de grupo.")
-                    ask()
-                    return
-                }
-
-                try {
-                    await sock.sendMessage(formattedJid, { text: msg })
-                    console.log(`> Consola: Mensaje enviado a [${formattedJid}]\n`)
-                } catch (e) {
-                    console.log("❌ Error al enviar mensaje:", e.message)
-                }
-                ask()
-            })
-        })
-    }
-    ask()
+function showMenu() {
+    console.log(`\n--- MENÚ DE COMANDOS ---`)
+    console.log(`Crea un nuevo proyecto con Baileys.`)
+    console.log(`Usa "Creador: [opción]" para empezar.`)
+    console.log(`------------------------`)
+    console.log(`- Privado: Enviar mensaje a un contacto.`)
+    console.log(`- Tickets: Gestionar tickets abiertos.`)
+    console.log(`- Grupo: Ver tus grupos.`)
+    console.log(`------------------------`)
+    console.log(`Para salir de un modo: .1`)
+    console.log(`Para cerrar un ticket: .2`)
 }
 
 startBot()
