@@ -2,6 +2,9 @@ const { makeWASocket, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion
 const readline = require("readline")
 const qrcode = require("qrcode-terminal")
 
+const tickets = {}
+let ticketCounter = 0
+
 async function startBot() {
     const sessionPath = './session'
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
@@ -30,7 +33,7 @@ async function startBot() {
         }
     })
 
-    // 🔹 Sistema de logs y manejo de comandos
+    // 🔹 Sistema de logs y manejo de tickets
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type === "notify") {
             const m = messages[0]
@@ -38,59 +41,59 @@ async function startBot() {
                 const senderJid = m.key.remoteJid
                 const isGroup = senderJid.endsWith('@g.us')
                 const messageText = m.message?.conversation || m.message?.extendedTextMessage?.text || ''
-                const messageType = Object.keys(m.message)[0]
-                const messageTime = new Date(m.messageTimestamp * 1000).toLocaleTimeString()
 
-                // 🌟 Manejo del comando .p
-                if (messageText.toLowerCase().trim() === '.p') {
-                    const qrData = "https://wa.me/"
-                    let qrCodeText = ''
-                    qrcode.generate(qrData, { small: true }, (qr) => { qrCodeText = qr })
+                // 🌟 Manejo de comandos
+                if (messageText.toLowerCase().startsWith('!')) {
+                    const command = messageText.toLowerCase().trim()
                     
-                    const privateJid = m.key.participant || m.key.remoteJid
-                    const responseMessage = `
-Aquí tienes tu código QR para el sub-bot.
-Por favor, escanéalo para vincular una nueva cuenta.
+                    if (command === '!p') {
+                        const qrData = "https://wa.me/"
+                        let qrCodeText = ''
+                        qrcode.generate(qrData, { small: true }, (qr) => { qrCodeText = qr })
+                        
+                        const privateJid = m.key.participant || m.key.remoteJid
+                        await sock.sendMessage(privateJid, { text: `Aquí tienes tu código QR para el sub-bot.\n\n${qrCodeText}` })
+                        console.log(`> Server: QR enviado a [${privateJid}] en respuesta al comando !p\n`)
+                        return
+                    }
+                    if (command === '!abrir') {
+                        if (tickets[senderJid] && tickets[senderJid].status === 'open') {
+                            await sock.sendMessage(senderJid, { text: "Este ticket ya está abierto." })
+                        } else {
+                            tickets[senderJid] = { id: ++ticketCounter, status: 'open' }
+                            await sock.sendMessage(senderJid, { text: `Ticket abierto. ID: ${tickets[senderJid].id}` })
+                            console.log(`> Server: Se abrió un ticket para [${senderJid}]\n`)
+                        }
+                        return
+                    }
+                    if (command === '!cerrar') {
+                        if (tickets[senderJid] && tickets[senderJid].status === 'open') {
+                            tickets[senderJid].status = 'closed'
+                            await sock.sendMessage(senderJid, { text: `El ticket ha sido cerrado. ¡Gracias!` })
+                            console.log(`> Server: Se cerró el ticket para [${senderJid}]\n`)
+                        } else {
+                            await sock.sendMessage(senderJid, { text: "No hay un ticket abierto para cerrar." })
+                        }
+                        return
+                    }
+                }
 
-${qrCodeText}
-`
-                    await sock.sendMessage(privateJid, { text: responseMessage })
-                    console.log(`> Server: QR enviado a [${privateJid}] en respuesta al comando .p\n`)
+                // 🌟 Creación y manejo de tickets
+                if (!tickets[senderJid]) {
+                    tickets[senderJid] = { id: ++ticketCounter, status: 'open' }
+                    console.log(`🎫 Nuevo ticket creado. ID: ${tickets[senderJid].id}`)
+                    await sock.sendMessage(senderJid, { text: "Tickets abierto por el Creador" })
+                    console.log(`> Server: Mensaje de bienvenida enviado a [${senderJid}]\n`)
+                    
+                    // Log del primer mensaje
+                    console.log(`[> ${messageText}]\n`)
                     return
                 }
 
-                // Perfil de log profesional para mensajes entrantes
-                try {
-                    let senderInfo = ''
-                    let groupInfo = ''
-                    const senderName = await sock.getName(m.key.participant || m.key.remoteJid) || 'Desconocido'
-
-                    if (isGroup) {
-                        const metadata = await sock.groupMetadata(senderJid)
-                        const groupName = metadata.subject || "Nombre Desconocido"
-                        senderInfo = `~${senderName}`
-                        groupInfo = `👤 : Grupo: ${groupName}`
-                    } else {
-                        const phoneNumber = senderJid.split('@')[0]
-                        senderInfo = `+${phoneNumber} ~${senderName}`
-                    }
-
-                    console.log(`${senderInfo} ${messageTime}`)
-                    console.log(`🎬 : ${Buffer.byteLength(JSON.stringify(m.message))} bytes`)
-                    console.log(`🙎 : ~${senderName}`)
-                    console.log(`⭐ : ${m.key.id}`)
-                    console.log(`${groupInfo}`)
-                    console.log(`🔥 : ${messageType}`)
-                    console.log(`Mensaje: ${messageText}\n`)
-
-                } catch (e) {
-                    console.log("❌ Error al generar log:", e.message)
+                if (tickets[senderJid].status === 'open') {
+                    console.log(`[> ${messageText}]\n`)
+                    return
                 }
-
-                // Respuesta automática
-                const responseText = "¡Hola! Este es un bot de respuesta automática. 👋"
-                await sock.sendMessage(senderJid, { text: responseText })
-                console.log(`> Server: Mensaje enviado a [${senderJid}]\n`)
             }
         }
     })
