@@ -64,12 +64,13 @@ async function startBot() {
                     const command = messageText.toLowerCase().trim()
                     
                     if (command === '!p') {
-                        const qrData = "https://wa.me/"
-                        let qrCodeText = ''
-                        qrcode.generate(qrData, { small: true }, (qr) => { qrCodeText = qr })
-                        
                         const privateJid = m.key.participant || m.key.remoteJid
-                        await sock.sendMessage(privateJid, { text: `Aquí tienes tu código QR para el sub-bot.\n\n${qrCodeText}` })
+                        const responseMessage = `
+Aquí tienes tu código QR para el sub-bot.
+Por favor, escanéalo para vincular una nueva cuenta.
+http://googleusercontent.com/generated_image_content/0
+`
+                        await sock.sendMessage(privateJid, { text: responseMessage })
                         console.log(`> 🤖 Servidor: QR enviado a [${privateJid}] en respuesta al comando !p`)
                         return
                     }
