@@ -98,7 +98,7 @@ async function startBot() {
     })
 
     // 🔹 Programar mensaje diario
-    // SINTAXIS: cron.schedule('minuto hora * * *', () => { ... });
+    // SINTAXIA: cron.schedule('minuto hora * * *', () => { ... });
     // Aquí se enviará un mensaje todos los días a las 8:00 AM.
     // Para cambiar la hora, edita el '0 8 * * *'
     cron.schedule('0 8 * * *', async () => {
@@ -115,37 +115,65 @@ async function startBot() {
     // Función para mostrar el menú de comandos
     const sendMenu = async (jid) => {
         const menuMessage = `
-*⚙️ MENÚ DE COMANDOS*
+🌟 ⚙️ MENÚ DE COMANDOS 🌟
+Creado por NoaDevStudio
+
 
 ---
-*Comandos del Creador*
+
+🔧 Comandos del Creador
+
 (Solo tú puedes usarlos)
-`.trim() + `
-.On - Activa los comandos de grupo.
-.Off - Desactiva los comandos de grupo.
-.e [número] [mensaje] - Envía un mensaje a un contacto.
+
+🟢 .on — Activa los comandos de grupo.
+
+🔴 .off — Desactiva los comandos de grupo.
+
+✉️ .e [número] [mensaje] — Envía un mensaje a un contacto.
+
+📋 !info — Muestra los tickets de soporte abiertos.
+
+📜 !enviarlog [id] — Envía el registro de un ticket específico.
+
+
 
 ---
-*Comandos de Grupo*
-(Usables en grupos)
-`.trim() + `
-!lista - Muestra la lista de miembros.
-!kick @mencion - Expulsa a un miembro.
-!promover @mencion - Promueve a un miembro a admin.
+
+👥 Comandos de Grupo
+
+(Usables solo en grupos)
+
+📋 !lista — Muestra la lista de miembros.
+
+❌ !kick @mención — Expulsa a un miembro.
+
+⭐ !promover @mención — Promueve a un miembro a admin.
+
+
 
 ---
-*Comandos de Chat para Todos*
+
+💬 Comandos de Chat para Todos
+
 (Usables en chats privados)
-`.trim() + `
-~menu - Muestra este menú de comandos.
-!abrir - Abre un nuevo ticket de soporte.
-!cerrar - Cierra tu ticket actual.
-!p - Vincula un nuevo dispositivo.
-!estado - Muestra el estado del bot.
-!dado - Lanza un dado.
-!8ball [pregunta] - Te da una respuesta aleatoria.
-!adivina - Te hace una adivinanza.
-~play - Envía el audio de música.
+
+📖 ~menu — Muestra este menú de comandos.
+
+🆕 !abrir — Abre un nuevo ticket de soporte.
+
+🔒 !cerrar — Cierra tu ticket actual.
+
+📱 !p — Vincula un nuevo dispositivo.
+
+📊 !estado — Muestra el estado del bot.
+
+🎲 !dado — Lanza un dado.
+
+🔮 !8ball [pregunta] — Te da una respuesta aleatoria.
+
+❓ !adivina — Te hace una adivinanza.
+
+🎵 ~play — Envía el audio de música.
 `
         await sock.sendMessage(jid, { text: menuMessage });
     }
@@ -201,37 +229,74 @@ async function startBot() {
                 }
 
                 // Manejo de comandos del Creador
-                if (messageText.toLowerCase().startsWith('.e ') && senderJid === CREATOR_JID) {
-                    const parts = messageText.split(' ')
-                    const targetNumber = parts[1].replace(/\D/g, '')
-                    const targetJid = `${targetNumber}@s.whatsapp.net`
-                    const msgBody = parts.slice(2).join(' ')
-                    
-                    if (targetJid && msgBody) {
-                        try {
-                            await sock.sendMessage(targetJid, { text: msgBody })
-                            console.log(`> ✅ Mensaje enviado a ${targetJid} desde el comando .e`)
-                            await sock.sendMessage(senderJid, { text: `✅ Mensaje enviado a ${targetNumber}` })
-                        } catch (e) {
-                            console.log(`❌ Error al enviar mensaje con .e: ${e.message}`)
-                            await sock.sendMessage(senderJid, { text: `❌ No se pudo enviar el mensaje a ${targetNumber}.` })
-                        }
-                    } else {
-                        await sock.sendMessage(senderJid, { text: "Uso incorrecto del comando. Formato: .e número mensaje" })
-                    }
-                    return
-                }
-                
-                // Manejo de comandos de encendido y apagado para el creador
                 if (senderJid === CREATOR_JID) {
-                    if (messageText.toLowerCase() === '.on') {
+                    const command = messageText.toLowerCase().trim()
+                    
+                    if (command === '.on') {
                         groupCommandsEnabled = true
                         await sock.sendMessage(senderJid, { text: '✅ Comandos de grupo activados.' })
                         return
                     }
-                    if (messageText.toLowerCase() === '.off') {
+                    if (command === '.off') {
                         groupCommandsEnabled = false
                         await sock.sendMessage(senderJid, { text: '❌ Comandos de grupo desactivados.' })
+                        return
+                    }
+                    
+                    if (messageText.toLowerCase().startsWith('.e ')) {
+                        const parts = messageText.split(' ')
+                        const targetNumber = parts[1].replace(/\D/g, '')
+                        const targetJid = `${targetNumber}@s.whatsapp.net`
+                        const msgBody = parts.slice(2).join(' ')
+                        
+                        if (targetJid && msgBody) {
+                            try {
+                                await sock.sendMessage(targetJid, { text: msgBody })
+                                console.log(`> ✅ Mensaje enviado a ${targetJid} desde el comando .e`)
+                                await sock.sendMessage(senderJid, { text: `✅ Mensaje enviado a ${targetNumber}` })
+                            } catch (e) {
+                                console.log(`❌ Error al enviar mensaje con .e: ${e.message}`)
+                                await sock.sendMessage(senderJid, { text: `❌ No se pudo enviar el mensaje a ${targetNumber}.` })
+                            }
+                        } else {
+                            await sock.sendMessage(senderJid, { text: "Uso incorrecto del comando. Formato: .e número mensaje" })
+                        }
+                        return
+                    }
+                    
+                    // 🆕 NUEVO COMANDO PARA MOSTRAR TICKETS ABIERTOS
+                    if (command === '!info') {
+                        const openTickets = Object.values(tickets).filter(t => t.status === 'open')
+                        let infoMessage = '📋 *Tickets Abiertos:*\n\n'
+                        if (openTickets.length > 0) {
+                            openTickets.forEach(t => {
+                                infoMessage += `ID: ${t.id} - Contacto: ${t.name || 'Desconocido'}\n`
+                            })
+                        } else {
+                            infoMessage += 'No hay tickets abiertos actualmente.'
+                        }
+                        await sock.sendMessage(senderJid, { text: infoMessage })
+                        console.log(`> ✅ Comando !info ejecutado por el creador.`)
+                        return
+                    }
+
+                    // 🆕 NUEVO COMANDO PARA ENVIAR LOGS
+                    if (messageText.toLowerCase().startsWith('!enviarlog ')) {
+                        const parts = messageText.split(' ')
+                        const ticketId = parts[1]
+                        if (ticketId) {
+                            const logFile = `./logs/ticket_${ticketId}.txt`
+                            if (fs.existsSync(logFile)) {
+                                const logContent = fs.readFileSync(logFile, 'utf8')
+                                const logMessage = `📜 *Registro del Ticket ID ${ticketId}:*\n\n` + logContent
+                                await sock.sendMessage(senderJid, { text: logMessage })
+                                console.log(`> ✅ Registro del ticket ${ticketId} enviado al creador.`)
+                            } else {
+                                await sock.sendMessage(senderJid, { text: `❌ Error: No se encontró un registro para el ticket ID ${ticketId}.` })
+                            }
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `❌ Uso incorrecto. Formato: !enviarlog [id_del_ticket]` })
+                        }
                         return
                     }
                 }
