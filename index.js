@@ -3,7 +3,7 @@ const readline = require("readline")
 const pino = require('pino')
 const fs = require('fs')
 const cron = require('node-cron')
-const os = require('os') // Nuevo módulo para obtener información del sistema
+const os = require('os')
 
 const tickets = {}
 let ticketCounter = 0
@@ -30,7 +30,7 @@ const GROUP_WELCOME_MESSAGE = (name) => {
 
 Me uno al grupo el ${weekday}, ${date} a las ${time}.
 
-Por favor, lee las reglas y si tienes alguna duda, usa !ayuda para ver mis comandos.
+Por favor, lee las reglas y si tienes alguna duda, usa ~menu para ver mis comandos.
 `
 }
 
@@ -87,7 +87,7 @@ async function startBot() {
     sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
         if (action === 'add') {
             const addedUser = participants[0]
-            const pushName = (await sock.fetchJidInfo(addedUser))?.name || addedUser.split('@')[0]
+            const pushName = (await sock.getName(addedUser)) || addedUser.split('@')[0]
             try {
                 await sock.sendMessage(id, { text: GROUP_WELCOME_MESSAGE(pushName) })
                 console.log(`> 👋 Mensaje de bienvenida enviado a ${pushName} en el grupo ${id}.`)
@@ -250,7 +250,7 @@ async function startBot() {
                         const groupMetadata = await sock.groupMetadata(senderJid)
                         let participantsList = '👥 *Lista de Miembros:*\n\n'
                         for (const p of groupMetadata.participants) {
-                            const participantName = (await sock.fetchJidInfo(p.id))?.name || p.id.split('@')[0]
+                            const participantName = (await sock.getName(p.id)) || p.id.split('@')[0]
                             participantsList += `- ${participantName} (${p.id.split('@')[0]})\n`
                         }
                         await sock.sendMessage(senderJid, { text: participantsList })
@@ -437,7 +437,7 @@ async function startBot() {
                     const jid = `${number}@s.whatsapp.net`
                     
                     ticketCounter = (ticketCounter % 900) + 1
-                    const name = (await sock.fetchJidInfo(jid))?.name || `Usuario ${number}`
+                    const name = (await sock.getName(jid)) || `Usuario ${number}`
                     tickets[jid] = { id: ticketCounter, status: 'open', name: name }
                     
                     console.log(`\n🎟️ Nuevo Ticket Abierto con ${name} (${number}).`)
