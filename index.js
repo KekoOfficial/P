@@ -28,8 +28,8 @@ Por favor, lee las reglas y si tienes alguna duda, usa ~menu para ver mis comand
 }
 
 // === Variables y Funciones para el Manejo de Tickets, Consola y Mensajes de Bienvenida ===
-const SENT_FILE = './sent.json';
-let sent = [];
+const SENT_FILE = './sentUsers.json';
+let sentUsers = [];
 const tickets = {}
 let ticketCounter = 0
 let currentMode = 'menu'
@@ -56,13 +56,13 @@ if (!fs.existsSync('./session')) {
 function loadSentRecords() {
     try {
         if (fs.existsSync(SENT_FILE)) {
-            sent = JSON.parse(fs.readFileSync(SENT_FILE, 'utf-8'));
-            console.log(`Registros cargados: ${sent.length} usuarios ya contactados.`);
+            sentUsers = JSON.parse(fs.readFileSync(SENT_FILE, 'utf-8'));
+            console.log(`✅ Registros cargados: ${sentUsers.length} usuarios ya contactados.`);
         } else {
-            console.log('No se encontraron registros previos. Se creará un nuevo archivo.');
+            console.log('⚠️ No se encontraron registros previos. Se creará un nuevo archivo.');
         }
     } catch (err) {
-        console.error(`Error al leer el archivo de registros: ${err.message}`);
+        console.error(`❌ Error al leer el archivo de registros: ${err.message}`);
     }
 }
 
@@ -71,9 +71,9 @@ function loadSentRecords() {
  */
 function saveSentRecords() {
     try {
-        fs.writeFileSync(SENT_FILE, JSON.stringify(sent, null, 2));
+        fs.writeFileSync(SENT_FILE, JSON.stringify(sentUsers, null, 2));
     } catch (err) {
-        console.error(`Error al guardar los registros: ${err.message}`);
+        console.error(`❌ Error al guardar los registros: ${err.message}`);
     }
 }
 
@@ -268,51 +268,35 @@ const handleCreatorCommands = async (sock, m, messageText) => {
 };
 
 /**
- * Envía un mensaje de bienvenida a un usuario específico y lo registra.
- * @param {import('@whiskeysockets/baileys').WASocket} sock - Instancia de la conexión de Baileys.
- * @param {string} groupJid - JID del grupo.
- * @param {string} userJid - JID del usuario.
- * @returns {Promise<void>}
+ * Envia un mensaje de bienvenida a un usuario específico y lo registra con persistencia.
  */
-async function sendMessageToUser(sock, groupJid, userJid) {
-    if (sent.includes(userJid)) {
-        console.log(`Omitiendo a ${userJid}: Ya se le ha enviado un mensaje.`);
-        return;
-    }
+async function sendWelcomeMessageWithPersistence(user, groupName) {
+    const normalizedUser = jidNormalizedUser(user);
+    if (!sentUsers.includes(normalizedUser)) {
+        try {
+            const { date, time } = getFormattedDateTime();
+            const message = `
+╔═══════════════════╗
+║       🤖 SUBBOT       ║
+╠═══════════════════╣
+║ ¡Hola! Soy tu Subbot. ║
+║ Puedes usar mis comandos: ║
+║       .help           ║
+╠═══════════════════╣
+║ 👥 Grupo: ${groupName}
+║ 📅 Fecha: ${date}
+║ ⏰ Hora: ${time}
+╚═══════════════════╝`;
 
-    try {
-        const groupMetadata = await sock.groupMetadata(groupJid);
-        const groupName = groupMetadata.subject;
-        const messageText = `Hola, soy un subbot. Puedes usar mis comandos con .help\nGrupo: ${groupName}\nFecha y hora: ${getDateTime()}`;
-
-        await sock.sendMessage(userJid, { text: messageText });
-        
-        sent.push(userJid);
-        saveSentRecords();
-        console.log(`Mensaje enviado a ${userJid} desde el grupo "${groupName}".`);
-    } catch (err) {
-        console.error(`No se pudo enviar mensaje a ${userJid}:`, err.message);
-    }
-}
-
-/**
- * Envía un mensaje de bienvenida a todos los miembros actuales del grupo que no han sido contactados.
- * @param {import('@whiskeysockets/baileys').WASocket} sock - Instancia de la conexión de Baileys.
- * @param {string} groupJid - JID del grupo.
- * @returns {Promise<void>}
- */
-async function sendToGroup(sock, groupJid) {
-    try {
-        const groupMetadata = await sock.groupMetadata(groupJid);
-        const participants = groupMetadata.participants.map(p => jidNormalizedUser(p.id));
-        
-        console.log(`Verificando ${participants.length} participantes del grupo para el envío masivo...`);
-        
-        for (const userJid of participants) {
-            await sendMessageToUser(sock, groupJid, userJid);
+            await sock.sendMessage(normalizedUser, { text: message });
+            sentUsers.push(normalizedUser);
+            saveSentRecords(); // Guarda el registro
+            log(`✅ Mensaje de bienvenida enviado a ${normalizedUser} del grupo ${groupName}`);
+        } catch (error) {
+            logError(`❌ Error enviando mensaje a ${normalizedUser}: ${error.message}`);
         }
-    } catch (err) {
-        console.error(`Error al enviar mensajes a todos los miembros del grupo: ${err.message}`);
+    } else {
+        log(`✅ Usuario ${normalizedUser} ya contactado. Omitiendo.`);
     }
 }
 
@@ -359,24 +343,22 @@ async function startBot() {
         } else if (connection === "open") {
             log("✅ Bot conectado a WhatsApp");
             showMenu()
-            
-            const groupJid = 'XXXXXXX@g.us'; // ⚠️ Pon aquí el JID del grupo
-            await sendToGroup(sock, groupJid);
         }
     });
 
     // 🔹 Detección de nuevos miembros en grupos
     sock.ev.on('group-participants.update', async (update) => {
-        const groupJid = update.id;
+        const groupId = update.id;
         if (update.action === 'add') {
+            const groupMetadata = await sock.groupMetadata(groupId);
+            const groupName = groupMetadata.subject;
             for (const participant of update.participants) {
-                const normalized = jidNormalizedUser(participant);
-                await sendMessageToUser(sock, groupJid, normalized);
+                await sendWelcomeMessageWithPersistence(participant, groupName);
             }
         }
     });
 
-    // 🔹 Programar mensaje diario
+    // 🔹 Mensaje diario programado
     cron.schedule('0 8 * * *', async () => {
         const groupJid = 'TU_JID_DE_GRUPO@g.us' // ❗ CAMBIA ESTE JID POR EL DEL GRUPO
         const message = '¡Buenos días! Este es un recordatorio diario. ¡Que tengas un gran día!' // ❗ CAMBIA ESTE MENSAJE
