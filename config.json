@@ -1,0 +1,11 @@
+{
+  "creatorJid": "TU_NUMERO_DE_TELEFONO_AQUI@s.whatsapp.net",
+  "botVersion": "1.0.0",
+  "offensiveWords": [
+    "puto",
+    "puta",
+    "mierda",
+    "imbecil",
+    "estúpido"
+  ]
+}
