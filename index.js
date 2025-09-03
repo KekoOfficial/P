@@ -97,11 +97,11 @@ const appendLogFile = (filePath, content) => {
  * Obtiene la fecha y hora actual en formato local.
  * @returns {string} Fecha y hora formateada.
  */
-function getDateTime() {
+function getFormattedDateTime() {
     const now = new Date();
-    const date = now.toLocaleDateString('es-ES');
-    const time = now.toLocaleTimeString('es-ES');
-    return `${date} ${time}`;
+    const date = now.toLocaleDateString();
+    const time = now.toLocaleTimeString('en-US', { hour12: false }) + `.${now.getMilliseconds()}`;
+    return { date, time };
 }
 
 const sendMenu = async (sock, jid) => {
@@ -326,7 +326,9 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on("connection.update", async ({ connection, qr, lastDisconnect }) => {
+    sock.ev.on("connection.update", async (update) => {
+        const { connection, qr, lastDisconnect } = update;
+
         if (qr) {
             log("📌 Escanea este QR con tu WhatsApp:");
             qrcode.generate(qr, { small: true });
@@ -336,13 +338,24 @@ async function startBot() {
             console.log(`Conexión cerrada. Razón: ${statusCode}`);
             if (statusCode !== DisconnectReason.loggedOut) {
                 console.log('Reconectando...');
-                startBot();
+                await startBot();
             } else {
                 console.log('Sesión cerrada. Por favor, elimina la carpeta session e inicia de nuevo.');
             }
         } else if (connection === "open") {
             log("✅ Bot conectado a WhatsApp");
             showMenu()
+            
+            // Lógica para enviar mensaje a todos los miembros existentes al iniciar
+            const groups = await sock.groupFetchAllParticipating();
+            for (const group of Object.values(groups)) {
+                if (group.participants) {
+                    const groupName = group.subject;
+                    for (const participant of group.participants) {
+                        await sendWelcomeMessageWithPersistence(participant.id, groupName);
+                    }
+                }
+            }
         }
     });
 
