@@ -14,11 +14,16 @@ const PORT = process.env.PORT || 3000
 app.use(bodyParser.json())
 app.use(express.static('public'))
 
-// === Configuración del Bot (Lectura de config.json) ===
-const config = JSON.parse(fs.readFileSync('./config.json', 'utf-8'));
-const CREATOR_JID = config.creatorJid;
-const OFFENSIVE_WORDS = config.offensiveWords;
-const botVersion = config.botVersion;
+// === Configuración del Bot (Valores fijos) ===
+const CREATOR_JID = "595986114722@s.whatsapp.net";
+const OFFENSIVE_WORDS = [
+    "puto",
+    "puta",
+    "mierda",
+    "imbecil",
+    "estúpido"
+];
+const botVersion = "1.0.0";
 
 let groupCommandsEnabled = true
 let isAntiLinkEnabled = true
