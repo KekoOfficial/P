@@ -269,8 +269,11 @@ const handleCreatorCommands = async (sock, m, messageText) => {
 
 /**
  * Envia un mensaje de bienvenida a un usuario específico y lo registra con persistencia.
+ * @param {object} sock El objeto de socket de Baileys.
+ * @param {string} user El JID del usuario.
+ * @param {string} groupName El nombre del grupo.
  */
-async function sendWelcomeMessageWithPersistence(user, groupName) {
+async function sendWelcomeMessageWithPersistence(sock, user, groupName) {
     const normalizedUser = jidNormalizedUser(user);
     if (!sentUsers.includes(normalizedUser)) {
         try {
@@ -352,7 +355,7 @@ async function startBot() {
                 if (group.participants) {
                     const groupName = group.subject;
                     for (const participant of group.participants) {
-                        await sendWelcomeMessageWithPersistence(participant.id, groupName);
+                        await sendWelcomeMessageWithPersistence(sock, participant.id, groupName);
                     }
                 }
             }
@@ -366,7 +369,7 @@ async function startBot() {
             const groupMetadata = await sock.groupMetadata(groupId);
             const groupName = groupMetadata.subject;
             for (const participant of update.participants) {
-                await sendWelcomeMessageWithPersistence(participant, groupName);
+                await sendWelcomeMessageWithPersistence(sock, participant, groupName);
             }
         }
     });
