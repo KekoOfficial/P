@@ -1,3 +1,4 @@
+cat > config.json << EOF
 {
   "creatorJid": "595986114722@s.whatsapp.net",
   "botVersion": "1.0.0",
@@ -9,3 +10,4 @@
     "estúpido"
   ]
 }
+EOF
