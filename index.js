@@ -5,14 +5,6 @@ const cron = require('node-cron')
 const qrcode = require('qrcode-terminal')
 const os = require('os')
 const chalk = require('chalk')
-const express = require('express')
-const bodyParser = require('body-parser')
-
-// === Configuración del Servidor Web ===
-const app = express()
-const PORT = process.env.PORT || 3000
-app.use(bodyParser.json())
-app.use(express.static('public'))
 
 // === Configuración del Bot (Valores fijos) ===
 const CREATOR_JID = "595986114722@s.whatsapp.net";
@@ -44,9 +36,6 @@ if (!fs.existsSync('./logs')) {
 }
 if (!fs.existsSync('./session')) {
     fs.mkdirSync('./session')
-}
-if (!fs.existsSync('./public')) {
-    fs.mkdirSync('./public')
 }
 
 // === Funciones de utilidad y persistencia ===
@@ -593,29 +582,6 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
                 }
             }
         }
-    });
-    
-    app.post('/ejecutar-comando', async (req, res) => {
-        const { command, jid } = req.body;
-        if (!command || !jid) {
-            return res.status(400).json({ status: 'error', message: 'Faltan parámetros: `command` y `jid` son requeridos.' });
-        }
-        
-        try {
-            const isCreatorCommand = await handleCreatorCommands(sock, jid, command);
-            if (!isCreatorCommand) {
-                 await sock.sendMessage(jid, { text: `Comando no reconocido o no válido para tu rol.` });
-            }
-            res.status(200).json({ status: 'success', message: `Comando '${command}' ejecutado en ${jid}.` });
-        } catch (e) {
-            logError(`Error al ejecutar comando '${command}' para ${jid}: ${e.message}`);
-            res.status(500).json({ status: 'error', message: `Error del servidor: ${e.message}` });
-        }
-    });
-
-    app.listen(PORT, () => {
-        console.log(chalk.cyan(`Servidor web escuchando en http://localhost:${PORT}`));
-        console.log(chalk.cyan(`Abre esta URL en tu navegador para usar la consola.`));
     });
 }
 
