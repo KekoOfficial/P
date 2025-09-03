@@ -1,34 +1,44 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, jidNormalizedUser, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys')
+const readline = require("readline")
 const pino = require('pino')
 const fs = require('fs')
 const cron = require('node-cron')
 const qrcode = require('qrcode-terminal')
 const os = require('os')
-const chalk = require('chalk')
 
-// === Configuración del Bot (Valores fijos) ===
-const CREATOR_JID = "595986114722@s.whatsapp.net";
-const OFFENSIVE_WORDS = [
-    "puto",
-    "puta",
-    "mierda",
-    "imbecil",
-    "estúpido"
-];
-const botVersion = "1.0.0";
+// === Configuración del Bot (Variables Globales) ===
+// ❗ DEBES REEMPLAZAR ESTE JID CON EL NÚMERO DEL CREADOR
+const CREATOR_JID = '595984495031@s.whatsapp.net' 
 
 let groupCommandsEnabled = true
 let isAntiLinkEnabled = true
 let isWordFilterEnabled = true
+const botVersion = '1.2.0'
 let botMode = 'activo'
+const OFFENSIVE_WORDS = ['puta', 'mierda', 'gilipollas', 'cabrón', 'estúpido', 'pendejo', 'imbécil', 'idiota', 'culiao', 'conchetumare']
+const GROUP_WELCOME_MESSAGE = (name) => {
+    const now = new Date()
+    const weekday = now.toLocaleString('es-ES', { weekday: 'long' })
+    const date = now.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+    const time = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    return `
+👋 ¡Bienvenido/a, ${name}!
+Me uno al grupo el ${weekday}, ${date} a las ${time}.
+Por favor, lee las reglas y si tienes alguna duda, usa ~menu para ver mis comandos.`
+}
 
-// === Variables y Funciones para el Manejo de Tickets, Bienvenida y Puntos ===
+// === Variables y Funciones para el Manejo de Tickets, Consola y Mensajes de Bienvenida ===
 const SENT_FILE = './sentUsers.json';
 let sentUsers = [];
-const USER_DATA_FILE = './user_data.json';
-let userData = {};
 const tickets = {}
 let ticketCounter = 0
+let currentMode = 'menu'
+let activeJid = null
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+})
 
 // Asegura que las carpetas existan
 if (!fs.existsSync('./logs')) {
@@ -41,96 +51,38 @@ if (!fs.existsSync('./session')) {
 // === Funciones de utilidad y persistencia ===
 
 /**
- * Carga los registros de usuarios contactados desde el archivo de persistencia.
+ * Carga los registros de usuarios desde el archivo de persistencia.
  */
 function loadSentRecords() {
     try {
         if (fs.existsSync(SENT_FILE)) {
             sentUsers = JSON.parse(fs.readFileSync(SENT_FILE, 'utf-8'));
-            console.log(chalk.green(`✅ Registros de bienvenida cargados: ${sentUsers.length} usuarios ya contactados.`));
+            console.log(`✅ Registros cargados: ${sentUsers.length} usuarios ya contactados.`);
         } else {
-            console.log(chalk.yellow('⚠️ No se encontraron registros de bienvenida. Se creará un nuevo archivo.'));
+            console.log('⚠️ No se encontraron registros previos. Se creará un nuevo archivo.');
         }
     } catch (err) {
-        console.error(chalk.red(`❌ Error al leer el archivo de registros de bienvenida: ${err.message}`));
+        console.error(`❌ Error al leer el archivo de registros: ${err.message}`);
     }
 }
 
 /**
- * Guarda los registros de usuarios contactados en el archivo de persistencia.
+ * Guarda los registros de usuarios en el archivo de persistencia.
  */
 function saveSentRecords() {
     try {
         fs.writeFileSync(SENT_FILE, JSON.stringify(sentUsers, null, 2));
     } catch (err) {
-        console.error(chalk.red(`❌ Error al guardar los registros de bienvenida: ${err.message}`));
+        console.error(`❌ Error al guardar los registros: ${err.message}`);
     }
 }
-
-/**
- * Carga los datos de los usuarios (puntos, etc.) desde el archivo de persistencia.
- */
-function loadUserData() {
-    try {
-        if (fs.existsSync(USER_DATA_FILE)) {
-            userData = JSON.parse(fs.readFileSync(USER_DATA_FILE, 'utf-8'));
-            console.log(chalk.green(`✅ Datos de usuarios cargados: ${Object.keys(userData).length} usuarios registrados.`));
-        } else {
-            console.log(chalk.yellow('⚠️ No se encontraron datos de usuarios. Se creará un nuevo archivo.'));
-            fs.writeFileSync(USER_DATA_FILE, JSON.stringify({}, null, 2));
-        }
-    } catch (err) {
-        console.error(chalk.red(`❌ Error al leer el archivo de datos de usuarios: ${err.message}`));
-    }
-}
-
-/**
- * Guarda los datos de los usuarios en el archivo de persistencia.
- */
-function saveUserData() {
-    try {
-        fs.writeFileSync(USER_DATA_FILE, JSON.stringify(userData, null, 2));
-    } catch (err) {
-        console.error(chalk.red(`❌ Error al guardar los datos de usuarios: ${err.message}`));
-    }
-}
-
-/**
- * Otorga puntos a un usuario y los guarda.
- * @param {string} jid El JID del usuario.
- */
-function awardPoints(jid) {
-    if (!userData[jid]) {
-        userData[jid] = { points: 0 };
-    }
-    userData[jid].points += 1;
-    saveUserData();
-}
-
-/**
- * Obtiene el rango de un usuario basado en sus puntos.
- * @param {number} points Los puntos del usuario.
- * @returns {string} El rango del usuario.
- */
-function getRank(points) {
-    if (points >= 2000) return '🏅 Leyenda del Grupo';
-    if (points >= 1000) return '🏆 Veterano del Chat';
-    if (points >= 500) return '🥇 Miembro Activo';
-    if (points >= 100) return '🥈 Explorador';
-    return '🥉 Novato';
-}
-
 
 const log = (message) => {
-    console.log(chalk.green(`> ✅ Log: ${message}`));
+    console.log(`> ✅ Log: ${message}`);
 };
 
 const logError = (message) => {
-    console.error(chalk.red(`> ❌ Error: ${message}`));
-};
-
-const logWarning = (message) => {
-    console.log(chalk.yellow(`> ⚠️ Advertencia: ${message}`));
+    console.error(`> ❌ Error: ${message}`);
 };
 
 const appendLogFile = (filePath, content) => {
@@ -152,16 +104,8 @@ function getFormattedDateTime() {
     return { date, time };
 }
 
-const handleGeneralCommands = async (sock, m, messageText) => {
-    const senderJid = m.key.remoteJid;
-    const command = messageText.toLowerCase().trim();
-    const senderParticipant = m.key.participant || m.key.remoteJid;
-
-    switch (true) {
-        case command === '~menu':
-        case command === '!ayuda':
-        case command === '!help':
-            const menuMessage = `
+const sendMenu = async (sock, jid) => {
+    const menuMessage = `
 ╔════════════════════╗
 🌟 ⚙️ MENÚ DE COMANDOS 🌟
 Creado por NoaDevStudio
@@ -174,14 +118,20 @@ Creado por NoaDevStudio
 🎲 !dado  — Lanza un dado.
 🎱 !8ball — Haz una pregunta y recibe una respuesta.
 
-🏆 Comandos de Puntos:
-
-💯 !mis puntos — Ve tus puntos y rango actual.
-🥇 !top10 — Muestra el ranking de los mejores 10.
-
 💡 Para usar los comandos, solo escribe el comando en el chat.
 `
-            await sock.sendMessage(senderJid, { text: menuMessage });
+    await sock.sendMessage(jid, { text: menuMessage });
+};
+
+const handleGeneralCommands = async (sock, m, messageText) => {
+    const senderJid = m.key.remoteJid;
+    const command = messageText.toLowerCase().trim();
+
+    switch (true) {
+        case command === '~menu':
+        case command === '!ayuda':
+        case command === '!help':
+            await sendMenu(sock, senderJid);
             break;
         case command === '!estado':
             const uptime = process.uptime();
@@ -207,34 +157,13 @@ Creado por NoaDevStudio
             const randomResponse = responses[Math.floor(Math.random() * responses.length)];
             await sock.sendMessage(senderJid, { text: `🎱 La bola mágica dice: *${randomResponse}*` });
             break;
-        case command === '!mis puntos':
-            const myPoints = userData[senderParticipant] ? userData[senderParticipant].points : 0;
-            const myRank = getRank(myPoints);
-            await sock.sendMessage(senderJid, { text: `💯 Tienes *${myPoints}* puntos.\nTu rango actual es: *${myRank}*` });
-            break;
-        case command === '!top10':
-            const sortedUsers = Object.entries(userData).sort(([, a], [, b]) => b.points - a.points);
-            let top10Message = `
-🌟 *TOP 10 USUARIOS* 🌟
-----------------------------
-`;
-            for (let i = 0; i < Math.min(10, sortedUsers.length); i++) {
-                const [jid, data] = sortedUsers[i];
-                const name = (await sock.getName(jid)) || `Usuario ${jid.split('@')[0]}`;
-                top10Message += `${i + 1}. ${name}: *${data.points}* puntos\n`;
-            }
-            if (sortedUsers.length === 0) {
-                top10Message += "No hay datos de puntos aún.";
-            }
-            await sock.sendMessage(senderJid, { text: top10Message });
-            break;
         default:
             break;
     }
 };
 
-const handleCreatorCommands = async (sock, jid, messageText) => {
-    const senderJid = jid;
+const handleCreatorCommands = async (sock, m, messageText) => {
+    const senderJid = m.key.remoteJid;
     const isGroup = senderJid.endsWith('@g.us');
     const command = messageText.toLowerCase().trim();
 
@@ -242,7 +171,7 @@ const handleCreatorCommands = async (sock, jid, messageText) => {
         return false;
     }
 
-    const mentionedJid = (command.match(/@(\d+)/)?.[1] || '') + '@s.whatsapp.net';
+    const mentionedJid = m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
 
     switch (true) {
         case command === '.on':
@@ -304,23 +233,15 @@ const handleCreatorCommands = async (sock, jid, messageText) => {
                 await sock.sendMessage(senderJid, { text: 'Uso incorrecto. Formato: `.bloquear-links [on/off]`' });
             }
             return true;
-        case isGroup && command.startsWith('.kick '):
-            if (mentionedJid) {
-                await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'remove');
-                log(`Miembro ${mentionedJid} expulsado por el creador.`);
-                await sock.sendMessage(senderJid, { text: `✅ Usuario expulsado.` });
-            } else {
-                await sock.sendMessage(senderJid, { text: "Uso incorrecto. Mencione a un usuario para expulsar." });
-            }
+        case isGroup && command.startsWith('.kick') && mentionedJid !== undefined:
+            await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'remove');
+            log(`Miembro ${mentionedJid} expulsado por el creador.`);
+            await sock.sendMessage(senderJid, { text: `✅ Usuario expulsado.` });
             return true;
-        case isGroup && command.startsWith('.promover '):
-            if (mentionedJid) {
-                await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'promote');
-                log(`Miembro ${mentionedJid} promovido a admin.`);
-                await sock.sendMessage(senderJid, { text: `✅ Usuario promovido a admin.` });
-            } else {
-                await sock.sendMessage(senderJid, { text: "Uso incorrecto. Mencione a un usuario para promover." });
-            }
+        case isGroup && command.startsWith('.promover') && mentionedJid !== undefined:
+            await sock.groupParticipantsUpdate(senderJid, [mentionedJid], 'promote');
+            log(`Miembro ${mentionedJid} promovido a admin.`);
+            await sock.sendMessage(senderJid, { text: `✅ Usuario promovido a admin.` });
             return true;
         case isGroup && command.startsWith('.limpiar '):
             const numMessages = parseInt(command.split(' ')[1], 10);
@@ -333,7 +254,7 @@ const handleCreatorCommands = async (sock, jid, messageText) => {
             await sock.deleteMessages(senderJid, messageKeys);
             await sock.sendMessage(senderJid, { text: `✅ Se eliminaron los últimos ${numMessages} mensajes.` });
             return true;
-        case command.startsWith('.anuncio '):
+        case isGroup && command.startsWith('.anuncio '):
             const announcement = messageText.split(' ').slice(1).join(' ');
             const groups = await sock.groupFetchAllParticipating();
             for (const group of Object.values(groups)) {
@@ -341,43 +262,10 @@ const handleCreatorCommands = async (sock, jid, messageText) => {
             }
             await sock.sendMessage(senderJid, { text: `✅ Anuncio enviado a ${Object.keys(groups).length} grupos.` });
             return true;
-        case command.startsWith('.tickets'):
-            const openTickets = Object.values(tickets).filter(t => t.status === 'open');
-            let userTicketMessage = '📋 *Tickets Abiertos:*\n\n';
-            if (openTickets.length > 0) {
-                openTickets.forEach(t => {
-                    userTicketMessage += `ID: ${t.id} - Contacto: ${t.name || 'Desconocido'}\n`;
-                });
-            } else {
-                userTicketMessage += 'No tienes tickets abiertos actualmente.';
-            }
-            await sock.sendMessage(senderJid, { text: userTicketMessage });
-            return true;
-        case command.startsWith('.abrir-ticket '):
-            const number = command.split(' ')[1].replace(/\D/g, '');
-            const jid = `${number}@s.whatsapp.net`;
-            ticketCounter = (ticketCounter % 900) + 1;
-            const name = (await sock.getName(jid)) || `Usuario ${number}`;
-            tickets[jid] = { id: ticketCounter, status: 'open', name: name };
-            log(`\n🎟️ Nuevo Ticket Abierto con ${name} (${number}).`);
-            await sock.sendMessage(senderJid, { text: `✅ Ticket abierto con ${name}. ID: ${ticketCounter}` });
-            return true;
-        case command.startsWith('.cerrar-ticket '):
-            const ticketIdToClose = parseInt(command.split(' ')[1], 10);
-            const ticketToClose = Object.values(tickets).find(t => t.id === ticketIdToClose && t.status === 'open');
-            if (ticketToClose) {
-                ticketToClose.status = 'closed';
-                log(`🎟️ Ticket ${ticketIdToClose} cerrado.`);
-                await sock.sendMessage(senderJid, { text: `✅ Ticket ${ticketIdToClose} cerrado.` });
-            } else {
-                await sock.sendMessage(senderJid, { text: `❌ No se encontró el ticket ${ticketIdToClose} o ya estaba cerrado.` });
-            }
-            return true;
         default:
             return false;
     }
 };
-
 
 /**
  * Envia un mensaje de bienvenida a un usuario específico y lo registra con persistencia.
@@ -406,29 +294,27 @@ async function sendWelcomeMessageWithPersistence(sock, user, groupName) {
             await sock.sendMessage(normalizedUser, { text: message });
             sentUsers.push(normalizedUser);
             saveSentRecords(); // Guarda el registro
-            log(`Mensaje de bienvenida enviado a ${normalizedUser} del grupo ${groupName}`);
+            log(`✅ Mensaje de bienvenida enviado a ${normalizedUser} del grupo ${groupName}`);
         } catch (error) {
-            logError(`Error enviando mensaje a ${normalizedUser}: ${error.message}`);
+            logError(`❌ Error enviando mensaje a ${normalizedUser}: ${error.message}`);
         }
     } else {
-        log(`Usuario ${normalizedUser} ya contactado. Omitiendo.`);
+        log(`✅ Usuario ${normalizedUser} ya contactado. Omitiendo.`);
     }
 }
 
 // === Lógica Principal del Bot ===
 async function startBot() {
     console.log(`
-${chalk.blue('███████╗███████╗██████╗ ███████╗██████╗ ███████╗')}
-${chalk.blue('██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗██╔════╝')}
-${chalk.blue('███████╗█████╗  ██████╔╝█████╗  ██████╔╝███████╗')}
-${chalk.blue('╚════██║██╔══╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║')}
-${chalk.blue('███████║███████╗██║  ██║███████╗██║  ██║███████║')}
-${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝')}
-                                                                   
+███████╗███████╗██████╗ ███████╗██████╗ ███████╗
+██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗██╔════╝
+███████╗█████╗  ██████╔╝█████╗  ██████╔╝███████╗
+╚════██║██╔══╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║
+███████║███████╗██║  ██║███████╗██║  ██║███████║
+╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝                                                                   
     `);
-
+    
     loadSentRecords();
-    loadUserData();
 
     const sessionPath = './session';
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -447,21 +333,23 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
         const { connection, qr, lastDisconnect } = update;
 
         if (qr) {
-            console.log(chalk.yellow("📌 Escanea este QR con tu WhatsApp:"));
+            log("📌 Escanea este QR con tu WhatsApp:");
             qrcode.generate(qr, { small: true });
         }
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            console.log(chalk.red(`Conexión cerrada. Razón: ${statusCode}`));
+            console.log(`Conexión cerrada. Razón: ${statusCode}`);
             if (statusCode !== DisconnectReason.loggedOut) {
-                console.log(chalk.yellow('Reconectando...'));
+                console.log('Reconectando...');
                 await startBot();
             } else {
-                console.log(chalk.red('Sesión cerrada. Por favor, elimina la carpeta session e inicia de nuevo.'));
+                console.log('Sesión cerrada. Por favor, elimina la carpeta session e inicia de nuevo.');
             }
         } else if (connection === "open") {
-            console.log(chalk.green("✅ Bot conectado a WhatsApp"));
-
+            log("✅ Bot conectado a WhatsApp");
+            showMenu()
+            
+            // Lógica para enviar mensaje a todos los miembros existentes al iniciar
             const groups = await sock.groupFetchAllParticipating();
             for (const group of Object.values(groups)) {
                 if (group.participants) {
@@ -474,6 +362,7 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
         }
     });
 
+    // 🔹 Detección de nuevos miembros en grupos
     sock.ev.on('group-participants.update', async (update) => {
         const groupId = update.id;
         if (update.action === 'add') {
@@ -485,9 +374,10 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
         }
     });
 
+    // 🔹 Mensaje diario programado
     cron.schedule('0 8 * * *', async () => {
-        const groupJid = 'TU_JID_DE_GRUPO@g.us'
-        const message = '¡Buenos días! Este es un recordatorio diario. ¡Que tengas un gran día!'
+        const groupJid = 'TU_JID_DE_GRUPO@g.us' // ❗ CAMBIA ESTE JID POR EL DEL GRUPO
+        const message = '¡Buenos días! Este es un recordatorio diario. ¡Que tengas un gran día!' // ❗ CAMBIA ESTE MENSAJE
         try {
             await sock.sendMessage(groupJid, { text: message })
             log(`Mensaje diario enviado a [${groupJid}]`)
@@ -496,38 +386,40 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
         }
     })
 
+    // 🔹 Sistema de logs y manejo de tickets
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type === "notify") {
             const m = messages[0];
-            const senderParticipant = m.key.participant || m.key.remoteJid;
-            const senderJid = m.key.remoteJid;
-            const isGroup = senderJid.endsWith('@g.us');
-            const messageText = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
-            const senderName = m.pushName || senderParticipant.split('@')[0];
-
+            
+            // 🔴 Alerta de mensajes eliminados
             if (m.message?.protocolMessage?.type === 'REVOKE') {
                 const deletedMsgKey = m.message.protocolMessage.key
+                const senderJid = deletedMsgKey.remoteJid
                 const participantJid = deletedMsgKey.participant || senderJid
                 const senderName = m.pushName || participantJid.split('@')[0]
-                logWarning(`🗑️ ALERTA: Mensaje eliminado por ${senderName} en [${senderJid}].`)
+                log(`🗑️ ALERTA: Mensaje eliminado por ${senderName} en [${senderJid}].`)
                 return
             }
 
-            if (isGroup) {
-                awardPoints(senderParticipant);
-            }
-
             if (!m.key.fromMe) {
+                const senderJid = m.key.remoteJid;
+                const isGroup = senderJid.endsWith('@g.us');
+                const messageText = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+                const senderParticipant = m.key.participant || m.key.remoteJid;
+                const senderName = m.pushName || senderParticipant.split('@')[0];
+
+                // 🔴 Filtro de Palabras
                 if (isWordFilterEnabled) {
                     for (const word of OFFENSIVE_WORDS) {
                         if (messageText.toLowerCase().includes(word.toLowerCase())) {
                             await sock.sendMessage(senderJid, { text: `⚠️ Por favor, mantén un lenguaje respetuoso. El uso de palabras ofensivas no está permitido.` });
-                            logWarning(`😠 Alerta: Palabra ofensiva detectada de ${senderName} en [${senderJid}]`);
+                            log(`😠 Alerta: Palabra ofensiva detectada de ${senderName} en [${senderJid}]`);
                             return;
                         }
                     }
                 }
 
+                // 🔴 Sistema Anti-Link
                 if (isAntiLinkEnabled && isGroup && messageText.match(/(https?:\/\/[^\s]+)/gi)) {
                     try {
                         const groupMetadata = await sock.groupMetadata(senderJid);
@@ -536,7 +428,7 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
                         if (!senderIsAdmin) {
                             await sock.sendMessage(senderJid, { delete: m.key });
                             await sock.groupParticipantsUpdate(senderJid, [senderParticipant], 'remove');
-                            logWarning(`🚫 Anti-Link: Mensaje con enlace de ${senderName} eliminado en [${senderJid}]. Usuario expulsado.`);
+                            log(`🚫 Anti-Link: Mensaje con enlace de ${senderName} eliminado en [${senderJid}]. Usuario expulsado.`);
                         } else {
                             log(`ℹ️ Anti-Link: Enlace ignorado, el remitente es un administrador.`);
                         }
@@ -546,8 +438,16 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
                     return;
                 }
 
+                // Manejar comandos del creador
+                const isCreatorCommand = await handleCreatorCommands(sock, m, messageText);
+                if (isCreatorCommand) {
+                    return;
+                }
+
+                // Manejar comandos generales
                 await handleGeneralCommands(sock, m, messageText);
 
+                // Lógica de tickets
                 if (messageText.toLowerCase().trim() === '!abrir' && !isGroup) {
                     if (tickets[senderJid] && tickets[senderJid].status === 'open') {
                         await sock.sendMessage(senderJid, { text: "Este ticket ya está abierto." });
@@ -565,6 +465,18 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
                     } else {
                         await sock.sendMessage(senderJid, { text: "No hay un ticket abierto para cerrar." });
                     }
+                } else if (messageText.toLowerCase().trim() === '!tickets' && senderJid === CREATOR_JID) {
+                    const openTickets = Object.values(tickets).filter(t => t.status === 'open');
+                    let userTicketMessage = '📋 *Tickets Abiertos:*\n\n';
+                    if (openTickets.length > 0) {
+                        openTickets.forEach(t => {
+                            userTicketMessage += `ID: ${t.id} - Contacto: ${t.name || 'Desconocido'}\n`;
+                        });
+                        userTicketMessage += '\nPara contactar un ticket, envía el ID con un guion bajo (ej: _123).';
+                    } else {
+                        userTicketMessage += 'No tienes tickets abiertos actualmente.';
+                    }
+                    await sock.sendMessage(senderJid, { text: userTicketMessage });
                 }
 
                 if (!tickets[senderJid] && !isGroup && !messageText.startsWith('!')) {
@@ -583,6 +495,183 @@ ${chalk.blue('╚══════╝╚══════╝╚═╝  ╚═�
             }
         }
     });
+    
+    // Función para manejar la consola
+    rl.on('line', async (input) => {
+        if (currentMode === 'menu') {
+            const command = input.trim()
+            if (command === '1') {
+                currentMode = 'privado'
+                log(`\n📱 Modo: Privado`)
+                log(`Ingrese el número de teléfono (ej: 595XXXXXXXX)`)
+            } else if (command === '2') {
+                currentMode = 'ticket'
+                log(`\n🎟️ Opción Tickets`)
+                const openTickets = Object.keys(tickets).filter(jid => tickets[jid].status === 'open')
+                if (openTickets.length > 0) {
+                    log(`Tickets abiertos (${openTickets.length}):`)
+                    openTickets.forEach((jid, index) => {
+                        log(`${index + 1} - Ticket ${tickets[jid].id} | Contacto: ${tickets[jid].name}`)
+                    })
+                    log("\nIngrese el número del ticket para interactuar.")
+                    log("Use .1 para volver al menú principal.")
+                } else {
+                    log("No hay tickets abiertos.")
+                    showMenu()
+                }
+            } else if (command === '3') {
+                currentMode = 'grupo'
+                log(`\n👥 Modo: Grupo`)
+                log(`Obteniendo lista de grupos...`)
+                const groups = await sock.groupFetchAllParticipating()
+                for (const jid in groups) {
+                    log(`Grupo: ${groups[jid].subject} | ID: ${jid}`)
+                }
+                log(`\nUse .1 para volver al menú principal.`)
+            } else if (command === '4') {
+                currentMode = 'abrir-ticket'
+                log(`\n➕ Abrir Ticket`)
+                log(`Ingrese el número de la persona (ej: 595XXXXXXXX)`)
+            } else {
+                log("Comando no reconocido. Opciones: 1, 2, 3 o 4")
+            }
+        } else {
+            if (input === '.1') {
+                currentMode = 'menu'
+                activeJid = null
+                showMenu()
+            } else if (input === '.2') {
+                if (currentMode === 'ticket' && activeJid && tickets[activeJid] && tickets[activeJid].status === 'open') {
+                    tickets[activeJid].status = 'closed'
+                    log(`🎟️ Ticket ${tickets[activeJid].id} cerrado.`)
+                    const logFile = `./logs/ticket_${tickets[activeJid].id}.txt`
+                    appendLogFile(logFile, `--- Ticket cerrado ---`)
+                    activeJid = null
+                } else {
+                    log("No hay un ticket abierto para cerrar.")
+                }
+            } else {
+                let jidToSend = null
+                if (currentMode === 'abrir-ticket') {
+                    const number = input.replace(/\D/g, '')
+                    const jid = `${number}@s.whatsapp.net`
+                    ticketCounter = (ticketCounter % 900) + 1
+                    const name = (await sock.getName(jid)) || `Usuario ${number}`
+                    tickets[jid] = { id: ticketCounter, status: 'open', name: name }
+                    log(`\n🎟️ Nuevo Ticket Abierto con ${name} (${number}).`)
+                    log(`\n💬 Mensaje para ${name}:`)
+                    const logFile = `./logs/ticket_${tickets[jid].id}.txt`
+                    appendLogFile(logFile, `--- Ticket abierto con ${name} (${jid}) ---`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jid, { text: msg })
+                            log(`Mensaje enviado a [${jid}]`)
+                            appendLogFile(logFile, `[${new Date().toLocaleString()}] Creador: ${msg}`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                }
+                
+                if (currentMode === 'privado') {
+                    jidToSend = `${input}@s.whatsapp.net`
+                    log(`📱 Consola: JID autocompletado a: ${jidToSend}`)
+                    log(`\n💬 Mensaje para ${jidToSend}:`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jidToSend, { text: msg })
+                            log(`Mensaje enviado a [${jidToSend}]`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                } else if (currentMode === 'ticket') {
+                    const ticketIndex = parseInt(input) - 1
+                    const openTickets = Object.keys(tickets).filter(jid => tickets[jid].status === 'open')
+                    if (ticketIndex >= 0 && ticketIndex < openTickets.length) {
+                        activeJid = openTickets[ticketIndex]
+                        log(`\n💬 Mensaje para Ticket ${tickets[activeJid].id}:`)
+                        rl.question("", async (msg) => {
+                            if (msg === '.1') {
+                                currentMode = 'menu'
+                                activeJid = null
+                                showMenu()
+                                return
+                            }
+                            try {
+                                await sock.sendMessage(activeJid, { text: msg })
+                                log(`Mensaje enviado al ticket ${tickets[activeJid].id}`)
+                                const logFile = `./logs/ticket_${tickets[activeJid].id}.txt`
+                                appendLogFile(logFile, `[${new Date().toLocaleString()}] Creador: ${msg}`)
+                            } catch (e) {
+                                logError("Error al enviar mensaje:", e.message)
+                            }
+                            showMenu()
+                        })
+                        return
+                    } else {
+                        log("Número de ticket inválido.")
+                        showMenu()
+                    }
+                } else if (currentMode === 'grupo') {
+                    jidToSend = input
+                    log(`\n💬 Mensaje para Grupo ${jidToSend}:`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jidToSend, { text: msg })
+                            log(`Mensaje enviado al grupo [${jidToSend}]`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                }
+
+                if (jidToSend) {
+                    try {
+                        await sock.sendMessage(jidToSend, { text: input })
+                        log(`Mensaje enviado a [${jidToSend}]`)
+                    } catch (e) {
+                        logError("Error al enviar mensaje:", e.message)
+                    }
+                }
+            }
+        }
+    })
+}
+
+function showMenu() {
+    console.log(`
+╔════════════════════╗
+🌟 ⚙️ MENÚ DE COMANDOS 🌟
+Creado por NoaDevStudio
+╚════════════════════╝
+
+✨ Opciones Principales:
+1️⃣ PRIVADO — ✉️ Enviar mensaje a un contacto
+2️⃣ TICKETS — 🎫 Gestionar tickets abiertos
+3️⃣ GRUPO — 👥 Ver tus grupos
+4️⃣ ABRIR TICKET — 🆕 Abrir un ticket a un contacto
+
+
+---
+
+ℹ️ Indicaciones:
+
+📝 Usa ~menu para ver todos los comandos
+
+🔙 Usa .1 para salir de un modo
+
+❌ Usa .2 para cerrar un ticket
+`);
 }
 
 startBot();
