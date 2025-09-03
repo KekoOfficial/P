@@ -2,6 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, jidNorma
 const { Boom } = require('@hapi/boom');
 const P = require('pino');
 const fs = require('fs');
+const qrcode = require('qrcode-terminal'); // ✅ Línea añadida para importar la librería
 
 const SENT_FILE = './sent.json';
 let sent = [];
@@ -121,7 +122,7 @@ async function startBot() {
         
         if (qr) {
             console.log('Escanea este código QR con tu WhatsApp para vincular el dispositivo:');
-            console.log(qr);
+            qrcode.generate(qr, { small: true }); // ✅ Línea modificada para generar el QR
         }
 
         if (connection === 'close') {
