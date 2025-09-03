@@ -468,3 +468,212 @@ async function startBot() {
                         await sock.sendMessage(senderJid, { text: "No hay un ticket abierto para cerrar." });
                     }
                 } else if (messageText.toLowerCase().trim() === '!tickets' && senderJid === CREATOR_JID) {
+                    const openTickets = Object.values(tickets).filter(t => t.status === 'open');
+                    let userTicketMessage = '📋 *Tickets Abiertos:*\n\n';
+                    if (openTickets.length > 0) {
+                        openTickets.forEach(t => {
+                            userTicketMessage += `ID: ${t.id} - Contacto: ${t.name || 'Desconocido'}\n`;
+                        });
+                        userTicketMessage += '\nPara contactar un ticket, envía el ID con un guion bajo (ej: _123).';
+                    } else {
+                        userTicketMessage += 'No tienes tickets abiertos actualmente.';
+                    }
+                    await sock.sendMessage(senderJid, { text: userTicketMessage });
+                }
+
+                if (!tickets[senderJid] && !isGroup && !messageText.startsWith('!')) {
+                    ticketCounter = (ticketCounter % 900) + 1;
+                    tickets[senderJid] = { id: ticketCounter, status: 'open', name: senderName };
+                    log(`🎟️ Nuevo Ticket Creado: ID ${tickets[senderJid].id} (de ${senderName})`);
+                    const logFile = `./logs/ticket_${tickets[senderJid].id}.txt`;
+                    appendLogFile(logFile, `--- Ticket abierto con ${senderName} (${senderJid}) ---`);
+                }
+
+                if (tickets[senderJid] && tickets[senderJid].status === 'open') {
+                    log(`[➡️ ${senderName}: ${messageText}]`);
+                    const logFile = `./logs/ticket_${tickets[senderJid].id}.txt`;
+                    appendLogFile(logFile, `[${new Date().toLocaleString()}] Usuario: ${messageText}`);
+                }
+            }
+        }
+    });
+    
+    // Función para manejar la consola
+    rl.on('line', async (input) => {
+        if (currentMode === 'menu') {
+            const command = input.trim()
+            if (command === '1') {
+                currentMode = 'privado'
+                log(`\n📱 Modo: Privado`)
+                log(`Ingrese el número de teléfono (ej: 595XXXXXXXX)`)
+            } else if (command === '2') {
+                currentMode = 'ticket'
+                log(`\n🎟️ Opción Tickets`)
+                const openTickets = Object.keys(tickets).filter(jid => tickets[jid].status === 'open')
+                if (openTickets.length > 0) {
+                    log(`Tickets abiertos (${openTickets.length}):`)
+                    openTickets.forEach((jid, index) => {
+                        log(`${index + 1} - Ticket ${tickets[jid].id} | Contacto: ${tickets[jid].name}`)
+                    })
+                    log("\nIngrese el número del ticket para interactuar.")
+                    log("Use .1 para volver al menú principal.")
+                } else {
+                    log("No hay tickets abiertos.")
+                    showMenu()
+                }
+            } else if (command === '3') {
+                currentMode = 'grupo'
+                log(`\n👥 Modo: Grupo`)
+                log(`Obteniendo lista de grupos...`)
+                const groups = await sock.groupFetchAllParticipating()
+                for (const jid in groups) {
+                    log(`Grupo: ${groups[jid].subject} | ID: ${jid}`)
+                }
+                log(`\nUse .1 para volver al menú principal.`)
+            } else if (command === '4') {
+                currentMode = 'abrir-ticket'
+                log(`\n➕ Abrir Ticket`)
+                log(`Ingrese el número de la persona (ej: 595XXXXXXXX)`)
+            } else {
+                log("Comando no reconocido. Opciones: 1, 2, 3 o 4")
+            }
+        } else {
+            if (input === '.1') {
+                currentMode = 'menu'
+                activeJid = null
+                showMenu()
+            } else if (input === '.2') {
+                if (currentMode === 'ticket' && activeJid && tickets[activeJid] && tickets[activeJid].status === 'open') {
+                    tickets[activeJid].status = 'closed'
+                    log(`🎟️ Ticket ${tickets[activeJid].id} cerrado.`)
+                    const logFile = `./logs/ticket_${tickets[activeJid].id}.txt`
+                    appendLogFile(logFile, `--- Ticket cerrado ---`)
+                    activeJid = null
+                } else {
+                    log("No hay un ticket abierto para cerrar.")
+                }
+            } else {
+                let jidToSend = null
+                if (currentMode === 'abrir-ticket') {
+                    const number = input.replace(/\D/g, '')
+                    const jid = `${number}@s.whatsapp.net`
+                    ticketCounter = (ticketCounter % 900) + 1
+                    const name = (await sock.getName(jid)) || `Usuario ${number}`
+                    tickets[jid] = { id: ticketCounter, status: 'open', name: name }
+                    log(`\n🎟️ Nuevo Ticket Abierto con ${name} (${number}).`)
+                    log(`\n💬 Mensaje para ${name}:`)
+                    const logFile = `./logs/ticket_${tickets[jid].id}.txt`
+                    appendLogFile(logFile, `--- Ticket abierto con ${name} (${jid}) ---`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jid, { text: msg })
+                            log(`Mensaje enviado a [${jid}]`)
+                            appendLogFile(logFile, `[${new Date().toLocaleString()}] Creador: ${msg}`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                }
+                
+                if (currentMode === 'privado') {
+                    jidToSend = `${input}@s.whatsapp.net`
+                    log(`📱 Consola: JID autocompletado a: ${jidToSend}`)
+                    log(`\n💬 Mensaje para ${jidToSend}:`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jidToSend, { text: msg })
+                            log(`Mensaje enviado a [${jidToSend}]`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                } else if (currentMode === 'ticket') {
+                    const ticketIndex = parseInt(input) - 1
+                    const openTickets = Object.keys(tickets).filter(jid => tickets[jid].status === 'open')
+                    if (ticketIndex >= 0 && ticketIndex < openTickets.length) {
+                        activeJid = openTickets[ticketIndex]
+                        log(`\n💬 Mensaje para Ticket ${tickets[activeJid].id}:`)
+                        rl.question("", async (msg) => {
+                            if (msg === '.1') {
+                                currentMode = 'menu'
+                                activeJid = null
+                                showMenu()
+                                return
+                            }
+                            try {
+                                await sock.sendMessage(activeJid, { text: msg })
+                                log(`Mensaje enviado al ticket ${tickets[activeJid].id}`)
+                                const logFile = `./logs/ticket_${tickets[activeJid].id}.txt`
+                                appendLogFile(logFile, `[${new Date().toLocaleString()}] Creador: ${msg}`)
+                            } catch (e) {
+                                logError("Error al enviar mensaje:", e.message)
+                            }
+                            showMenu()
+                        })
+                        return
+                    } else {
+                        log("Número de ticket inválido.")
+                        showMenu()
+                    }
+                } else if (currentMode === 'grupo') {
+                    jidToSend = input
+                    log(`\n💬 Mensaje para Grupo ${jidToSend}:`)
+                    rl.question("", async (msg) => {
+                        try {
+                            await sock.sendMessage(jidToSend, { text: msg })
+                            log(`Mensaje enviado al grupo [${jidToSend}]`)
+                        } catch (e) {
+                            logError("Error al enviar mensaje:", e.message)
+                        }
+                        currentMode = 'menu'
+                        showMenu()
+                    })
+                    return
+                }
+
+                if (jidToSend) {
+                    try {
+                        await sock.sendMessage(jidToSend, { text: input })
+                        log(`Mensaje enviado a [${jidToSend}]`)
+                    } catch (e) {
+                        logError("Error al enviar mensaje:", e.message)
+                    }
+                }
+            }
+        }
+    })
+}
+
+function showMenu() {
+    console.log(`
+╔════════════════════╗
+🌟 ⚙️ MENÚ DE COMANDOS 🌟
+Creado por NoaDevStudio
+╚════════════════════╝
+
+✨ Opciones Principales:
+1️⃣ PRIVADO — ✉️ Enviar mensaje a un contacto
+2️⃣ TICKETS — 🎫 Gestionar tickets abiertos
+3️⃣ GRUPO — 👥 Ver tus grupos
+4️⃣ ABRIR TICKET — 🆕 Abrir un ticket a un contacto
+
+
+---
+
+ℹ️ Indicaciones:
+
+📝 Usa ~menu para ver todos los comandos
+
+🔙 Usa .1 para salir de un modo
+
+❌ Usa .2 para cerrar un ticket
+`);
+}
+
+startBot();
